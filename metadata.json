@@ -1,0 +1,6 @@
+{
+  "name": "Pound Padel 4",
+  "description": "Бронирование кортов для падла в Махачкале. Быстро, удобно, в пару кликов.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

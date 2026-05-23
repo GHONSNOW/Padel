@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "bookings": {
+      "title": "Booking",
+      "description": "Information about a court booking reservation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique ID of the booking" },
+        "courtId": { "type": "string", "description": "The target court ID" },
+        "courtName": { "type": "string", "description": "The human readable court name" },
+        "userId": { "type": "string", "description": "Owner user identifier" },
+        "userEmail": { "type": "string", "description": "Email of the booking user" },
+        "userName": { "type": "string", "description": "Name of the booking user" },
+        "date": { "type": "string", "description": "The booking date in format YYYY-MM-DD" },
+        "timeSlots": { "type": "array", "description": "Array of selected hours, e.g. ['08:00', '09:00']" },
+        "hoursCount": { "type": "number", "description": "Total duration in hours" },
+        "totalPrice": { "type": "number", "description": "Total paid price at 2000 per hour" },
+        "bookingCode": { "type": "string", "description": "Booking confirmation uppercase code" },
+        "createdAt": { "type": "string", "description": "Timestamp string of creation" },
+        "status": { "type": "string", "enum": ["active", "cancelled"], "description": "Current status" }
+      },
+      "required": ["id", "courtId", "courtName", "userId", "userEmail", "date", "timeSlots", "hoursCount", "totalPrice", "bookingCode", "createdAt", "status"]
+    },
+    "blockedDates": {
+      "title": "BlockedDate",
+      "description": "Dates blocked by the administrator",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "Date in format YYYY-MM-DD" },
+        "reason": { "type": "string", "description": "Reason for blocking" },
+        "blockedBy": { "type": "string", "description": "Admin email who blocked the date" }
+      },
+      "required": ["date", "blockedBy"]
+    }
+  },
+  "firestore": {
+    "/bookings/{bookingId}": {
+      "schema": "bookings",
+      "description": "Reservations of courts across the application"
+    },
+    "/blockedDates/{dateId}": {
+      "schema": "blockedDates",
+      "description": "Dates blocked by administrator making them unavailable"
+    }
+  }
+}
