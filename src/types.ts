@@ -17,6 +17,8 @@ export interface Booking {
   userId: string;
   userEmail: string;
   userName: string;
+  userPhone?: string;
+  paymentMethod?: "cash" | "transfer";
   date: string; // YYYY-MM-DD
   timeSlots: string[]; // e.g. ['10:00', '11:00']
   hoursCount: number;

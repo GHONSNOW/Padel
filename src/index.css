@@ -11,3 +11,5 @@
   --color-brand-red: #DE3C26;
   --color-brand-dark: #111D30;
 }
+
+@variant dark (&:where(.dark, .dark *));

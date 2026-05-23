@@ -46,7 +46,8 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         isAdmin() ||
         existing().userId == request.auth.uid ||
-        existing().userEmail == request.auth.token.email
+        existing().userEmail == request.auth.token.email ||
+        (existing().userEmail != null && request.auth.token.email != null && existing().userEmail.lowerAscii() == request.auth.token.email.lowerAscii())
       );
 
       allow delete: if isAdmin();

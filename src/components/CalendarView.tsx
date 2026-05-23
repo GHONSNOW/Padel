@@ -143,30 +143,30 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6" id="calendar-booking-view">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+    <div className="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-6 border border-slate-100 dark:border-slate-800 shadow-sm space-y-6" id="calendar-booking-view">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-4">
         <div className="flex items-center gap-2">
           <CalendarIcon className="w-5 h-5 text-brand-red flex-shrink-0" />
-          <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight uppercase font-display">Календарь бронирования</h3>
+          <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight uppercase font-display">Календарь бронирования</h3>
         </div>
-        <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto bg-slate-50 sm:bg-transparent p-2 sm:p-0 rounded-2xl">
+        <div className="flex items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto bg-slate-50 dark:bg-slate-800/80 sm:bg-transparent p-1.5 sm:p-0 rounded-2xl">
           <button
             onClick={() => changeMonth(-1)}
             type="button"
-            className="p-2 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-705 rounded-xl transition-colors cursor-pointer"
           >
-            <ChevronLeft className="w-4.5 h-4.5 text-slate-600" />
+            <ChevronLeft className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-slate-600 dark:text-slate-400" />
           </button>
-          <span className="text-xs font-black text-slate-800 min-w-[120px] text-center select-none uppercase tracking-wider font-display">
+          <span className="text-xs font-black text-slate-800 dark:text-slate-200 min-w-[95px] sm:min-w-[120px] text-center select-none uppercase tracking-wider font-display">
             {currentMonth.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
           </span>
           <button
             onClick={() => changeMonth(1)}
             type="button"
             disabled={isNextMonthDisabled()}
-            className="p-2 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-705 rounded-xl transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <ChevronRight className="w-4.5 h-4.5 text-slate-600" />
+            <ChevronRight className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-slate-600 dark:text-slate-400" />
           </button>
         </div>
       </div>
@@ -201,7 +201,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             let indicatorClass = "absolute bottom-1 w-1.5 h-1.5 rounded-full ";
 
             if (isDisabled) {
-              cellClass += "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed";
+              cellClass += "bg-slate-50 dark:bg-slate-800/30 border-slate-100 dark:border-slate-800/50 text-slate-300 dark:text-slate-600 cursor-not-allowed";
               indicatorClass += "bg-transparent";
             } else if (isSel) {
               // App brand highlight color (Sports Blue + Sports Red)
@@ -211,14 +211,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               // Not selected, future day
               cellClass += "hover:scale-[1.02] hover:border-brand-blue/30 ";
               if (info.status === "blocked") {
-                cellClass += "bg-rose-50 border-rose-300 text-rose-700 font-bold";
+                cellClass += "bg-rose-50 dark:bg-rose-955/20 border-rose-300 dark:border-rose-900/40 text-rose-700 dark:text-rose-300 font-bold";
                 indicatorClass += "bg-rose-500";
               } else if (info.status === "full") {
-                cellClass += "bg-rose-50 border-rose-350 text-rose-600 font-bold";
+                cellClass += "bg-rose-50 dark:bg-rose-955/20 border-rose-350 dark:border-rose-900/40 text-rose-600 dark:text-rose-300 font-bold";
                 indicatorClass += "bg-rose-500";
               } else {
                 // Free (Green as requested)
-                cellClass += "bg-emerald-50 border-emerald-300 text-emerald-850 font-bold";
+                cellClass += "bg-emerald-50 dark:bg-emerald-955/20 border-emerald-300 dark:border-emerald-900/40 text-emerald-850 dark:text-emerald-300 font-bold";
                 indicatorClass += "bg-emerald-500 animate-pulse";
               }
             }
@@ -236,7 +236,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               >
                 <span>{day.getDate()}</span>
                 {isToday(day) && !isSel && (
-                  <span className="absolute top-1 text-[8px] tracking-tight bg-slate-900 text-white font-extrabold px-1 py-0.5 rounded-md leading-none">
+                  <span className="absolute top-1 text-[8px] tracking-tight bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-extrabold px-1 py-0.5 rounded-md leading-none">
                     СЕГОДНЯ
                   </span>
                 )}
@@ -248,25 +248,25 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       </div>
 
       {/* Legend with Green for free, Red for booked */}
-      <div className="flex flex-wrap items-center justify-center gap-4 pt-3 border-t border-slate-100 text-xs text-slate-500 font-semibold font-display">
+      <div className="flex flex-wrap items-center justify-center gap-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 font-semibold font-display">
         <div className="flex items-center gap-1.5">
-          <span className="w-3.5 h-3.5 rounded-md bg-emerald-50 border-2 border-emerald-300"></span>
+          <span className="w-3.5 h-3.5 rounded-md bg-emerald-50 dark:bg-emerald-950/20 border-2 border-emerald-300 dark:border-emerald-900"></span>
           <span>Свободные даты (Зеленый)</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-3.5 h-3.5 rounded-md bg-rose-50 border-2 border-rose-300"></span>
+          <span className="w-3.5 h-3.5 rounded-md bg-rose-50 dark:bg-rose-950/20 border-2 border-rose-300 dark:border-rose-900"></span>
           <span>Занятые / Закрытые (Красный)</span>
         </div>
       </div>
 
       {/* Slots selection */}
       {selectedDate && (
-        <div className="pt-4 border-t border-slate-100 space-y-4">
+        <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight flex items-center gap-1.5 font-display">
-              <Clock className="w-4 h-4 text-slate-500" />
+            <h4 className="text-xs font-black text-slate-900 dark:text-slate-200 uppercase tracking-tight flex items-center gap-1.5 font-display">
+              <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" />
               Выберите время на {" "}
-              <span className="text-slate-900 underline decoration-brand-red decoration-2">
+              <span className="text-slate-900 dark:text-slate-100 underline decoration-brand-red decoration-2">
                 {new Date(selectedDate).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
               </span>
             </h4>
@@ -282,11 +282,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
               let buttonClass = "py-3 px-3 rounded-2xl text-xs font-bold transition-all text-center flex flex-col items-center justify-center border ";
               if (isBooked) {
-                buttonClass += "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed line-through";
+                buttonClass += "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed line-through";
               } else if (isSelected) {
                 buttonClass += "bg-brand-blue border-brand-blue text-white shadow-sm scale-98 ring-2 ring-brand-blue/40";
               } else {
-                buttonClass += "bg-white border-slate-200 text-slate-700 hover:border-brand-blue/30 hover:bg-slate-50 cursor-pointer";
+                buttonClass += "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-brand-blue/30 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer";
               }
 
               return (
@@ -298,7 +298,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   className={buttonClass}
                 >
                   <span className="font-bold tracking-tight text-sm font-mono">{slot}</span>
-                  <span className={`text-[9px] mt-1 uppercase font-bold tracking-wider leading-none block ${isSelected ? "text-brand-red" : isBooked ? "text-slate-300" : "text-emerald-700 font-semibold"}`}>
+                  <span className={`text-[9px] mt-1 uppercase font-bold tracking-wider leading-none block ${isSelected ? "text-brand-red" : isBooked ? "text-slate-300 dark:text-slate-500" : "text-emerald-700 dark:text-emerald-400 font-semibold"}`}>
                     {isBooked ? "Занято" : isSelected ? "Выбрано" : "Свободно"}
                   </span>
                 </button>

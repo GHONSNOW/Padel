@@ -4,7 +4,8 @@ import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, query } from
 import { 
   Calendar, Clock, LogOut, Shield, ChevronRight, User as UserIcon,
   CheckCircle2, AlertTriangle, Building, ThumbsUp, MapPin, Star,
-  X, Compass, Heart, Share2, Info, Loader2, Play, ChevronLeft, Ban
+  X, Compass, Heart, Share2, Info, Loader2, Play, ChevronLeft, Ban,
+  Sun, Moon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -12,6 +13,7 @@ import { auth, db, googleProvider, handleFirestoreError, OperationType } from ".
 import { Court, Booking, BlockedDate } from "./types";
 import { CalendarView } from "./components/CalendarView";
 import { AdminPanel } from "./components/AdminPanel";
+import { PaymentGateway } from "./components/PaymentGateway";
 
 // Static Courts Data with matching images from our assets directory
 const COURTS: Court[] = [
@@ -51,8 +53,30 @@ const COURTS: Court[] = [
 ];
 
 export default function App() {
+  // Theme state
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved) {
+      return saved === "dark";
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  }, [isDark]);
+
   // State
   const [user, setUser] = useState<User | null>(null);
+  const [userPhone, setUserPhone] = useState<string>("");
+  const [userDisplayName, setUserDisplayName] = useState<string>("");
+  const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"book" | "my-bookings" | "admin">("book");
   
@@ -78,11 +102,19 @@ export default function App() {
   const [viewingCourt, setViewingCourt] = useState<Court | null>(null);
   const [cancelStatusMsg, setCancelStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [showPaymentGateway, setShowPaymentGateway] = useState<boolean>(false);
+  const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
 
   // 1. Listen to Authenticated User
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        const savedPhone = localStorage.getItem(`user_phone_${currentUser.uid}`) || "";
+        const savedName = localStorage.getItem(`user_name_${currentUser.uid}`) || currentUser.displayName || "";
+        setUserPhone(savedPhone);
+        setUserDisplayName(savedName);
+      }
       setLoading(false);
     });
     return () => unsubscribe();
@@ -96,7 +128,11 @@ export default function App() {
     const unsubscribeBookings = onSnapshot(collection(db, bookingsPath), (snapshot) => {
       const list: Booking[] = [];
       snapshot.forEach((doc) => {
-        list.push(doc.data() as Booking);
+        const data = doc.data() as Booking;
+        list.push({
+          ...data,
+          id: doc.id
+        });
       });
       // Sort in-client: creation timestamp descending
       list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -143,7 +179,7 @@ export default function App() {
   const isAdmin = user?.email === "halilovramazan394@gmail.com";
 
   // Booking creator
-  const executeBooking = async () => {
+  const executeBooking = async (paymentMethod: "cash" | "transfer") => {
     if (!user) {
       alert("Пожалуйста, авторизуйтесь перед бронированием корта.");
       return;
@@ -171,7 +207,9 @@ export default function App() {
       courtName: selectedCourt.name,
       userId: user.uid,
       userEmail: user.email || "",
-      userName: user.displayName || "Игрок Padel",
+      userName: userDisplayName || user.displayName || "Игрок Padel",
+      userPhone: userPhone,
+      paymentMethod: paymentMethod,
       date: selectedDate,
       timeSlots: selectedSlots,
       hoursCount: selectedSlots.length,
@@ -185,6 +223,7 @@ export default function App() {
       await setDoc(doc(db, path, bookingId), payload);
       setBookingSuccessCode(code);
       setSelectedSlots([]);
+      setShowPaymentGateway(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `${path}/${bookingId}`);
     } finally {
@@ -192,21 +231,75 @@ export default function App() {
     }
   };
 
+  // Initiate checkout/payment verification
+  const handleInitiatePayment = () => {
+    if (!user) {
+      alert("Пожалуйста, авторизуйтесь перед бронированием корта.");
+      return;
+    }
+    if (selectedSlots.length === 0) {
+      alert("Пожалуйста, выберите хотя бы один свободный часовой слот.");
+      return;
+    }
+
+    // Verify day is not blocked
+    const isBlocked = blockedDates.some(b => b.date === selectedDate);
+    if (isBlocked) {
+      alert("Эта дата временно заблокирована администратором.");
+      return;
+    }
+
+    // MANDATORY phone check
+    if (!userPhone.trim()) {
+      alert("Для подтверждения бронирования необходимо заполнить контактный телефон в вашем профиле!");
+      setShowProfileModal(true);
+      return;
+    }
+
+    setShowPaymentGateway(true);
+  };
+
   // Booking Cancel Handler (User can cancel their own, Admin can cancel any)
   const cancelBooking = async (id: string) => {
     setCancellingId(id);
     setCancelStatusMsg(null);
     const path = "bookings";
+
+    // Find the booking in local state to verify permission
+    const targetBooking = bookings.find(b => b.id === id);
+    if (!targetBooking) {
+      setCancelStatusMsg({ type: "error", text: "Бронирование не найдено." });
+      setCancellingId(null);
+      return;
+    }
+
+    // Check if current user is owner or admin
+    const isOwner = targetBooking.userId === user?.uid || 
+                    (targetBooking.userEmail && user?.email && targetBooking.userEmail.toLowerCase() === user.email.toLowerCase());
+
+    if (!isAdmin && !isOwner) {
+      setCancelStatusMsg({ 
+        type: "error", 
+        text: "У вас нет прав для отмены этого бронирования. Вы можете отменять только свои бронирования." 
+      });
+      setCancellingId(null);
+      return;
+    }
+
     try {
       const bRef = doc(db, path, id);
       await updateDoc(bRef, { status: "cancelled" });
+
+      // Instantly update the local bookings state so change is reflected in UI immediately without reloading
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: "cancelled" } : b));
+
       setCancelStatusMsg({ type: "success", text: "Ваше бронирование успешно отменено!" });
       setTimeout(() => setCancelStatusMsg(null), 7000);
     } catch (error) {
       console.error("Firestore cancellation error:", error);
       setCancelStatusMsg({ 
         type: "error", 
-        text: "Не удалось отменить бронирование. У вас есть права только на отмену собственных активных сессий." 
+        text: "Не удалось отменить бронирование. Ошибка прав доступа или сети." 
       });
       setTimeout(() => setCancelStatusMsg(null), 8000);
     } finally {
@@ -257,9 +350,9 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-brand-cream flex flex-col items-center justify-center font-sans text-brand-blue">
+      <div className="min-h-screen bg-brand-cream dark:bg-brand-dark flex flex-col items-center justify-center font-sans text-brand-blue dark:text-brand-cream transition-colors duration-200">
         <Loader2 className="w-10 h-10 text-brand-red animate-spin" />
-        <p className="text-[10px] font-black text-brand-blue mt-4 uppercase tracking-widest font-display">Подготовка корта P4...</p>
+        <p className="text-[10px] font-black text-brand-blue dark:text-brand-cream mt-4 uppercase tracking-widest font-display">Подготовка корта P4...</p>
       </div>
     );
   }
@@ -268,9 +361,21 @@ export default function App() {
   if (!user) {
     return (
       <div 
-        className="min-h-screen bg-brand-cream text-brand-dark flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans"
+        className="min-h-screen bg-brand-cream dark:bg-brand-dark text-brand-dark dark:text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans transition-colors duration-200"
         id="sign-in-gate"
       >
+        {/* Floating Theme Toggle */}
+        <div className="absolute top-6 right-6 z-50">
+          <button
+            onClick={() => setIsDark(!isDark)}
+            type="button"
+            className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all shadow-md cursor-pointer flex items-center justify-center"
+            title={isDark ? "Светлая тема" : "Темная тема"}
+          >
+            {isDark ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-brand-blue" />}
+          </button>
+        </div>
+
         {/* Artistic tennis/padel net background */}
         <div className="absolute inset-0 pointer-events-none opacity-[0.05] flex items-center justify-center">
           <svg className="w-full h-full scale-120" viewBox="0 0 100 200" fill="none" stroke="currentColor" strokeWidth="1">
@@ -342,7 +447,7 @@ export default function App() {
 
   // AUTHENTICATED WEB APP INTERFACE
   return (
-    <div className="min-h-screen bg-brand-cream text-slate-800 flex flex-col font-sans" id="court-web-app">
+    <div className="min-h-screen bg-brand-cream dark:bg-brand-dark text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200" id="court-web-app">
       
       {/* EXTREMELY POLISHED RESPONSIVE WEB NAVBAR */}
       <header className="bg-brand-blue text-white shadow-md sticky top-0 z-50 px-4 sm:px-6 py-3.5 flex-shrink-0 border-b border-white/10" id="main-web-header">
@@ -367,17 +472,38 @@ export default function App() {
 
             {/* Mobile Profile & Logout Controls (Only visible under md) */}
             <div className="flex md:hidden items-center gap-2">
+              <button
+                onClick={() => setIsDark(!isDark)}
+                type="button"
+                className="p-1.5 hover:bg-white/10 rounded-lg text-brand-cream/80 hover:text-amber-440 transition-colors cursor-pointer mr-0.5"
+                title={isDark ? "Светлая тема" : "Темная тема"}
+              >
+                {isDark ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-200" />}
+              </button>
               {user.photoURL ? (
                 <img 
                   src={user.photoURL} 
                   alt="Avatar" 
-                  className="h-8 w-8 rounded-lg object-contain border border-white/10 bg-brand-dark" 
+                  className="h-8 w-8 rounded-lg object-contain border border-white/10 bg-brand-dark cursor-pointer" 
+                  onClick={() => setShowProfileModal(true)}
+                  title="Редактировать профиль"
                 />
               ) : (
-                <div className="h-8 w-8 rounded-lg bg-brand-red text-white flex items-center justify-center font-black uppercase text-xs font-display">
+                <div 
+                  className="h-8 w-8 rounded-lg bg-brand-red text-white flex items-center justify-center font-black uppercase text-xs font-display cursor-pointer"
+                  onClick={() => setShowProfileModal(true)}
+                  title="Редактировать профиль"
+                >
                   {user.email?.slice(0, 2)}
                 </div>
               )}
+              <button
+                onClick={() => setShowProfileModal(true)}
+                className="p-1.5 hover:bg-white/10 rounded-lg text-brand-cream/80 hover:text-brand-red transition-colors cursor-pointer"
+                title="Редактировать профиль"
+              >
+                <UserIcon className="w-4 h-4" />
+              </button>
               <button
                 onClick={handleSignOut}
                 className="p-1.5 hover:bg-white/10 rounded-lg text-brand-cream/80 hover:text-rose-400 transition-colors cursor-pointer"
@@ -432,18 +558,35 @@ export default function App() {
 
           {/* Desktop User Profile Controls (Hidden under md) */}
           <div className="hidden md:flex items-center gap-3">
-            <div className="text-right">
-              <span className="text-xs font-bold text-slate-100 block">{user.displayName || "Рамазан Игрок"}</span>
-              <span className="text-[10px] text-brand-cream font-mono block font-bold leading-none mt-0.5">{user.email}</span>
+            <button
+              onClick={() => setIsDark(!isDark)}
+              type="button"
+              className="p-2.5 hover:bg-white/10 rounded-xl text-brand-cream/80 hover:text-amber-450 transition-colors cursor-pointer mr-1"
+              title={isDark ? "Светлая тема" : "Темная тема"}
+            >
+              {isDark ? <Sun className="w-4.5 h-4.5 text-amber-500 animate-pulse" /> : <Moon className="w-4.5 h-4.5 text-indigo-200" />}
+            </button>
+            <div className="text-right cursor-pointer hover:opacity-85" onClick={() => setShowProfileModal(true)} title="Редактировать профиль">
+              <span className="text-xs font-bold text-slate-100 block flex items-center gap-1 justify-end">
+                <span className="underline decoration-white/20 underline-offset-2">{userDisplayName || user.displayName || "Рамазан Игрок"}</span>
+                <span className="text-[8px] bg-brand-red text-white px-1.5 py-0.2 rounded font-normal leading-none">Профиль</span>
+              </span>
+              <span className="text-[10px] text-brand-cream font-mono block font-bold leading-none mt-1">{userPhone || "Добавить телефон"}</span>
             </div>
             {user.photoURL ? (
               <img 
                 src={user.photoURL} 
                 alt="Avatar" 
-                className="h-10 w-10 rounded-xl object-contain border border-white/10 bg-brand-dark" 
+                className="h-10 w-10 rounded-xl object-contain border border-white/10 bg-brand-dark cursor-pointer" 
+                onClick={() => setShowProfileModal(true)}
+                title="Редактировать профиль"
               />
             ) : (
-              <div className="h-10 w-10 rounded-xl bg-brand-red text-white flex items-center justify-center font-black uppercase text-sm font-display">
+              <div 
+                className="h-10 w-10 rounded-xl bg-brand-red text-white flex items-center justify-center font-black uppercase text-sm font-display cursor-pointer"
+                onClick={() => setShowProfileModal(true)}
+                title="Редактировать профиль"
+              >
                 {user.email?.slice(0, 2)}
               </div>
             )}
@@ -455,7 +598,6 @@ export default function App() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
-
         </div>
       </header>
 
@@ -709,7 +851,7 @@ export default function App() {
                   setSelectedDate={setSelectedDate}
                   selectedSlots={selectedSlots}
                   setSelectedSlots={setSelectedSlots}
-                  bookings={bookings}
+                  bookings={bookings.filter(b => b.courtId === viewingCourt.id)}
                   blockedDates={blockedDates}
                 />
 
@@ -724,7 +866,7 @@ export default function App() {
                     </div>
 
                     <button
-                      onClick={executeBooking}
+                      onClick={handleInitiatePayment}
                       disabled={submittingBooking}
                       className="w-full sm:w-auto bg-brand-red text-white hover:bg-brand-red/90 font-black px-8 py-4 rounded-2xl shadow-lg shadow-brand-red/10 transition-all uppercase tracking-widest cursor-pointer disabled:opacity-50 text-xs flex items-center justify-center gap-2 font-display"
                     >
@@ -837,9 +979,7 @@ export default function App() {
                             <button
                               disabled={cancellingId === b.id}
                               onClick={() => {
-                                if (confirm("Вы действительно хотите отменить бронирование? Деньги будут моментально возвращены на баланс.")) {
-                                  cancelBooking(b.id);
-                                }
+                                setBookingToCancel(b);
                               }}
                               className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl transition-all font-bold uppercase tracking-wide cursor-pointer disabled:opacity-55 disabled:cursor-wait"
                             >
@@ -878,6 +1018,165 @@ export default function App() {
 
       {/* CONFETTI SUCCESS MODAL */}
       <AnimatePresence>
+        {showPaymentGateway && user && (
+          <PaymentGateway
+            amount={selectedSlots.length * 2000}
+            courtName={selectedCourt.name}
+            selectedDate={selectedDate}
+            selectedSlots={selectedSlots}
+            onSuccess={executeBooking}
+            onClose={() => setShowPaymentGateway(false)}
+            userEmail={user.email || ""}
+            userName={userDisplayName || user.displayName || "Игрок Padel"}
+            userPhone={userPhone}
+          />
+        )}
+
+        {showProfileModal && user && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-100 font-sans"
+            id="profile-edit-modal"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-brand-dark border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-sm w-full relative shadow-2xl space-y-5"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <h4 className="text-sm font-black text-slate-950 dark:text-white uppercase tracking-tight font-display flex items-center gap-2">
+                  <UserIcon className="w-4 h-4 text-brand-red" />
+                  Личный профиль игрока
+                </h4>
+                <button 
+                  onClick={() => setShowProfileModal(false)}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors text-slate-500 dark:text-slate-400"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-505 dark:text-slate-350 uppercase tracking-wider block mb-1">ФИО Игрока</label>
+                  <input 
+                    type="text"
+                    value={userDisplayName}
+                    onChange={(e) => setUserDisplayName(e.target.value)}
+                    placeholder="Например, Рамазан Халилов"
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-250 dark:border-slate-805 focus:border-brand-blue rounded-xl p-3 text-xs font-bold dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-505 dark:text-slate-350 uppercase tracking-wider block mb-1">Номер телефона (Обязательно)</label>
+                  <input 
+                    type="text"
+                    value={userPhone}
+                    onChange={(e) => {
+                      // Allow only numbers, dashes, spaces, and the plus sign
+                      const val = e.target.value.replace(/[^0-9+\s\-()]/g, "");
+                      setUserPhone(val);
+                    }}
+                    placeholder="+7 (999) 123-45-67"
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-250 dark:border-slate-805 focus:border-brand-blue rounded-xl p-3 text-xs font-bold font-mono dark:text-white"
+                  />
+                  <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-1 font-bold">Номер необходим для отправки подтверждения заказа и связи администратора с вами.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowProfileModal(false)}
+                  className="flex-1 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-white/5 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider font-display text-slate-650 dark:text-slate-350 pointer-events-auto"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!userPhone.trim()) {
+                      alert("Пожалуйста, заполните действительный номер телефона!");
+                      return;
+                    }
+                    localStorage.setItem(`user_phone_${user.uid}`, userPhone);
+                    localStorage.setItem(`user_name_${user.uid}`, userDisplayName);
+                    alert("Профиль успешно сохранен!");
+                    setShowProfileModal(false);
+                  }}
+                  className="flex-1 bg-brand-red hover:bg-brand-red/90 text-white font-black py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider font-display shadow-md pointer-events-auto"
+                >
+                  Сохранить
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {bookingToCancel && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] font-sans"
+            id="cancel-confirmation-modal"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-brand-dark border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-sm w-full relative shadow-2xl space-y-5"
+            >
+              <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800">
+                <AlertTriangle className="w-5 h-5 text-brand-red flex-shrink-0" />
+                <h4 className="text-sm font-black text-slate-950 dark:text-white uppercase tracking-tight font-display">
+                  Отмена бронирования
+                </h4>
+              </div>
+
+              <div className="space-y-3.5 text-xs text-slate-600 dark:text-slate-300">
+                <p className="font-bold leading-relaxed">
+                  Вы действительно хотите отменить бронирование корта <span className="text-slate-900 dark:text-white font-black">{bookingToCancel.courtName}</span>?
+                </p>
+                <div className="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl border border-slate-150 dark:border-slate-800 space-y-2 font-mono">
+                  <div className="flex justify-between"><span className="text-slate-450 uppercase text-[9px] font-bold">Код:</span> <span className="text-slate-800 dark:text-slate-200 font-extrabold">{bookingToCancel.bookingCode}</span></div>
+                  <div className="flex justify-between border-t border-slate-100 dark:border-slate-800 pt-1.5"><span className="text-slate-450 uppercase text-[9px] font-bold">Дата:</span> <span className="text-slate-800 dark:text-slate-200 font-bold">{new Date(bookingToCancel.date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</span></div>
+                  <div className="flex justify-between border-t border-slate-100 dark:border-slate-800 pt-1.5"><span className="text-slate-450 uppercase text-[9px] font-bold">Время:</span> <span className="text-slate-800 dark:text-slate-200 font-bold font-semibold">{bookingToCancel.timeSlots.join(", ")}</span></div>
+                  <div className="flex justify-between border-t border-slate-100 dark:border-slate-800 pt-1.5"><span className="text-slate-450 uppercase text-[9px] font-bold">Сумма:</span> <span className="text-brand-red font-bold">{bookingToCancel.totalPrice} ₽</span></div>
+                </div>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug font-semibold mt-1">
+                  После отмены данный временной слот моментально освободится в календаре площадки для других игроков.
+                </p>
+              </div>
+
+              <div className="flex gap-2.5 pt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBookingToCancel(null)}
+                  className="flex-1 border border-slate-200 dark:border-slate-750 hover:bg-slate-50 dark:hover:bg-white/5 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider font-display text-slate-600 dark:text-slate-350 cursor-pointer"
+                >
+                  Назад
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const id = bookingToCancel.id;
+                    setBookingToCancel(null);
+                    await cancelBooking(id);
+                  }}
+                  className="flex-1 bg-brand-red hover:bg-brand-red/90 text-white font-black py-3 rounded-xl text-[10px] font-black uppercase tracking-wider font-display shadow-md cursor-pointer"
+                >
+                  Да, отменить
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {bookingSuccessCode && (
           <motion.div 
             initial={{ opacity: 0 }}
